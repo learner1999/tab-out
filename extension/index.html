@@ -26,6 +26,33 @@
       <!-- "Friday, April 4, 2026" — written by getDateDisplay() in app.js -->
       <div class="date" id="dateDisplay"></div>
     </div>
+    <div class="header-actions">
+      <button class="background-settings-toggle" id="backgroundSettingsToggle" data-action="toggle-background-settings" aria-label="Background settings" aria-expanded="false" title="Background settings">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75 7.5 10.5a2.121 2.121 0 0 1 3 0l5.25 5.25m-1.5-1.5 1.5-1.5a2.121 2.121 0 0 1 3 0l3 3m-19.5 0h19.5m-18-11.25h16.5c.621 0 1.125.504 1.125 1.125v12.75c0 .621-.504 1.125-1.125 1.125H3.75a1.125 1.125 0 0 1-1.125-1.125V5.625c0-.621.504-1.125 1.125-1.125Zm10.125 3.375h.008v.008h-.008v-.008Z" />
+        </svg>
+      </button>
+      <div class="background-settings-panel" id="backgroundSettingsPanel" hidden>
+        <div class="background-mode-group" role="radiogroup" aria-label="Background mode">
+          <label class="background-mode-option">
+            <input type="radio" name="backgroundMode" value="daily">
+            <span>Daily</span>
+          </label>
+          <label class="background-mode-option">
+            <input type="radio" name="backgroundMode" value="randomRecent">
+            <span>Shuffle</span>
+          </label>
+          <label class="background-mode-option">
+            <input type="radio" name="backgroundMode" value="custom">
+            <span>Custom</span>
+          </label>
+        </div>
+        <div class="custom-background-row" id="customBackgroundRow" hidden>
+          <input type="url" id="customBackgroundUrl" placeholder="Image URL" autocomplete="off" spellcheck="false">
+          <button type="button" data-action="save-custom-background">Apply</button>
+        </div>
+      </div>
+    </div>
   </header>
 
   <!-- ================================================================

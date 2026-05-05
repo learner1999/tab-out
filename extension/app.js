@@ -34,8 +34,15 @@ let openTabs = [];
    hit the network every time it opens.
    ---------------------------------------------------------------- */
 
-const BING_BACKGROUND_ENDPOINT = 'https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=zh-CN';
-const BING_BACKGROUND_CACHE_KEY = 'bingDailyBackground';
+const BING_BACKGROUND_MARKET = 'zh-CN';
+const BING_DAILY_BACKGROUND_CACHE_KEY = 'bingDailyBackground';
+const BING_RECENT_BACKGROUND_CACHE_KEY = 'bingRecentBackgrounds';
+const BACKGROUND_SETTINGS_KEY = 'backgroundSettings';
+const BACKGROUND_MODES = new Set(['daily', 'randomRecent', 'custom']);
+const DEFAULT_BACKGROUND_SETTINGS = {
+  mode: 'daily',
+  customUrl: '',
+};
 
 function getLocalDateKey(date = new Date()) {
   const year = date.getFullYear();
@@ -44,53 +51,208 @@ function getLocalDateKey(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+function getBingBackgroundEndpoint(count = 1) {
+  return `https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=${count}&mkt=${BING_BACKGROUND_MARKET}`;
+}
+
 function normalizeBingImageUrl(url) {
   if (!url) return '';
   return url.startsWith('http') ? url : `https://www.bing.com${url}`;
 }
 
-function applyBackgroundImage(imageUrl) {
-  if (!imageUrl) return;
-
-  const image = new Image();
-  image.onload = () => {
-    document.documentElement.style.setProperty('--tabout-bg-image', `url("${imageUrl}")`);
-    document.body.classList.add('has-bing-background');
-  };
-  image.src = imageUrl;
+function getCssUrlValue(url) {
+  const escapedUrl = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  return `url("${escapedUrl}")`;
 }
 
-async function loadBingDailyBackground() {
-  try {
-    const today = getLocalDateKey();
-    const cached = await chrome.storage.local.get(BING_BACKGROUND_CACHE_KEY);
-    const cachedBackground = cached[BING_BACKGROUND_CACHE_KEY];
-
-    if (cachedBackground?.date === today && cachedBackground?.url) {
-      applyBackgroundImage(cachedBackground.url);
+function applyBackgroundImage(imageUrl) {
+  return new Promise((resolve, reject) => {
+    if (!imageUrl) {
+      reject(new Error('No background image URL'));
       return;
     }
 
-    const response = await fetch(BING_BACKGROUND_ENDPOINT);
-    if (!response.ok) throw new Error(`Bing background request failed: ${response.status}`);
+    const image = new Image();
+    image.onload = () => {
+      document.documentElement.style.setProperty('--tabout-bg-image', getCssUrlValue(imageUrl));
+      document.body.classList.add('has-background-image');
+      resolve(imageUrl);
+    };
+    image.onerror = () => reject(new Error('Background image failed to load'));
+    image.src = imageUrl;
+  });
+}
 
-    const data = await response.json();
-    const image = data?.images?.[0];
-    const imageUrl = normalizeBingImageUrl(image?.url);
-    if (!imageUrl) throw new Error('Bing background response did not include an image URL');
+function normalizeBackgroundSettings(settings = {}) {
+  settings = settings || {};
+  const mode = BACKGROUND_MODES.has(settings.mode) ? settings.mode : DEFAULT_BACKGROUND_SETTINGS.mode;
+  return {
+    mode,
+    customUrl: typeof settings.customUrl === 'string' ? settings.customUrl.trim() : '',
+  };
+}
 
+async function getBackgroundSettings() {
+  const stored = await chrome.storage.local.get(BACKGROUND_SETTINGS_KEY);
+  return normalizeBackgroundSettings(stored[BACKGROUND_SETTINGS_KEY]);
+}
+
+async function saveBackgroundSettings(nextSettings) {
+  const currentSettings = await getBackgroundSettings();
+  const settings = normalizeBackgroundSettings({ ...currentSettings, ...nextSettings });
+  await chrome.storage.local.set({ [BACKGROUND_SETTINGS_KEY]: settings });
+  return settings;
+}
+
+function syncBackgroundSettingsControls(settings) {
+  const normalizedSettings = normalizeBackgroundSettings(settings);
+  const panel = document.getElementById('backgroundSettingsPanel');
+  const customRow = document.getElementById('customBackgroundRow');
+  const customInput = document.getElementById('customBackgroundUrl');
+
+  document.querySelectorAll('input[name="backgroundMode"]').forEach(input => {
+    input.checked = input.value === normalizedSettings.mode;
+  });
+
+  if (customRow) customRow.hidden = normalizedSettings.mode !== 'custom';
+  if (customInput) customInput.value = normalizedSettings.customUrl;
+  if (panel) panel.dataset.mode = normalizedSettings.mode;
+}
+
+function setBackgroundSettingsPanelOpen(open) {
+  const panel = document.getElementById('backgroundSettingsPanel');
+  const toggle = document.getElementById('backgroundSettingsToggle');
+  if (!panel || !toggle) return;
+
+  panel.hidden = !open;
+  toggle.setAttribute('aria-expanded', String(open));
+}
+
+async function fetchBingBackgrounds(count = 1) {
+  const response = await fetch(getBingBackgroundEndpoint(count));
+  if (!response.ok) throw new Error(`Bing background request failed: ${response.status}`);
+
+  const data = await response.json();
+  return (data?.images || [])
+    .map(image => ({
+      date: image.startdate || '',
+      url: normalizeBingImageUrl(image.url),
+      title: image.title || '',
+      copyright: image.copyright || '',
+    }))
+    .filter(image => image.url);
+}
+
+async function loadBingDailyBackground() {
+  const today = getLocalDateKey();
+  const cached = await chrome.storage.local.get(BING_DAILY_BACKGROUND_CACHE_KEY);
+  const cachedBackground = cached[BING_DAILY_BACKGROUND_CACHE_KEY];
+
+  if (cachedBackground?.date === today && cachedBackground?.url) {
+    await applyBackgroundImage(cachedBackground.url);
+    return cachedBackground;
+  }
+
+  const [background] = await fetchBingBackgrounds(1);
+  if (!background?.url) throw new Error('Bing background response did not include an image URL');
+
+  const dailyBackground = { ...background, date: today };
+  await chrome.storage.local.set({ [BING_DAILY_BACKGROUND_CACHE_KEY]: dailyBackground });
+  await applyBackgroundImage(dailyBackground.url);
+  return dailyBackground;
+}
+
+async function loadRandomRecentBingBackground() {
+  const today = getLocalDateKey();
+  const cached = await chrome.storage.local.get(BING_RECENT_BACKGROUND_CACHE_KEY);
+  const cachedBackgrounds = cached[BING_RECENT_BACKGROUND_CACHE_KEY];
+  let images = Array.isArray(cachedBackgrounds?.images) ? cachedBackgrounds.images : [];
+
+  if (cachedBackgrounds?.date !== today || images.length === 0) {
+    images = await fetchBingBackgrounds(8);
+    if (images.length === 0) throw new Error('Bing recent backgrounds response was empty');
     await chrome.storage.local.set({
-      [BING_BACKGROUND_CACHE_KEY]: {
+      [BING_RECENT_BACKGROUND_CACHE_KEY]: {
         date: today,
-        url: imageUrl,
-        title: image.title || '',
-        copyright: image.copyright || '',
+        images,
       },
     });
+  }
 
-    applyBackgroundImage(imageUrl);
+  const randomImage = images[Math.floor(Math.random() * images.length)];
+  await applyBackgroundImage(randomImage.url);
+  return randomImage;
+}
+
+async function loadCustomBackground(customUrl) {
+  const imageUrl = (customUrl || '').trim();
+  if (!imageUrl) {
+    await loadBingDailyBackground();
+    return null;
+  }
+
+  await applyBackgroundImage(imageUrl);
+  return { url: imageUrl };
+}
+
+async function loadSelectedBackground() {
+  const settings = await getBackgroundSettings();
+  syncBackgroundSettingsControls(settings);
+
+  try {
+    if (settings.mode === 'randomRecent') {
+      await loadRandomRecentBingBackground();
+    } else if (settings.mode === 'custom') {
+      await loadCustomBackground(settings.customUrl);
+    } else {
+      await loadBingDailyBackground();
+    }
   } catch (err) {
-    console.warn('[tab-out] Could not load Bing daily background:', err);
+    console.warn('[tab-out] Could not load selected background:', err);
+    if (settings.mode !== 'daily') {
+      try {
+        await loadBingDailyBackground();
+      } catch (fallbackErr) {
+        console.warn('[tab-out] Could not load fallback Bing background:', fallbackErr);
+      }
+    }
+  }
+}
+
+function isValidImageUrlInput(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+async function saveCustomBackgroundFromInput() {
+  const input = document.getElementById('customBackgroundUrl');
+  const customUrl = (input?.value || '').trim();
+
+  if (!customUrl) {
+    showToast('Paste an image URL');
+    input?.focus();
+    return;
+  }
+
+  if (!isValidImageUrlInput(customUrl)) {
+    showToast('Use an http or https image URL');
+    input?.focus();
+    return;
+  }
+
+  try {
+    await applyBackgroundImage(customUrl);
+    const settings = await saveBackgroundSettings({ mode: 'custom', customUrl });
+    syncBackgroundSettingsControls(settings);
+    showToast('Background updated');
+  } catch (err) {
+    console.warn('[tab-out] Custom background failed:', err);
+    showToast('Could not load that image');
+    input?.focus();
   }
 }
 
@@ -1256,6 +1418,18 @@ document.addEventListener('click', async (e) => {
 
   const action = actionEl.dataset.action;
 
+  // ---- Background settings ----
+  if (action === 'toggle-background-settings') {
+    const panel = document.getElementById('backgroundSettingsPanel');
+    setBackgroundSettingsPanelOpen(panel?.hidden);
+    return;
+  }
+
+  if (action === 'save-custom-background') {
+    await saveCustomBackgroundFromInput();
+    return;
+  }
+
   // ---- Close duplicate Tab Out tabs ----
   if (action === 'close-tabout-dupes') {
     await closeTabOutDupes();
@@ -1501,6 +1675,37 @@ document.addEventListener('click', async (e) => {
   }
 });
 
+// ---- Background mode picker ----
+document.addEventListener('change', async (e) => {
+  if (!e.target.matches('input[name="backgroundMode"]')) return;
+
+  const mode = e.target.value;
+  if (!BACKGROUND_MODES.has(mode)) return;
+
+  const settings = await saveBackgroundSettings({ mode });
+  syncBackgroundSettingsControls(settings);
+
+  if (mode === 'custom' && !settings.customUrl) {
+    document.getElementById('customBackgroundUrl')?.focus();
+    return;
+  }
+
+  await loadSelectedBackground();
+  showToast(mode === 'randomRecent' ? 'Shuffle background on' : 'Background updated');
+});
+
+// ---- Close background settings when clicking elsewhere ----
+document.addEventListener('click', (e) => {
+  if (e.target.closest('.header-actions')) return;
+  setBackgroundSettingsPanelOpen(false);
+});
+
+document.addEventListener('keydown', async (e) => {
+  if (e.target.id !== 'customBackgroundUrl' || e.key !== 'Enter') return;
+  e.preventDefault();
+  await saveCustomBackgroundFromInput();
+});
+
 // ---- Archive toggle — expand/collapse the archive section ----
 document.addEventListener('click', (e) => {
   const toggle = e.target.closest('#archiveToggle');
@@ -1547,5 +1752,5 @@ document.addEventListener('input', async (e) => {
 /* ----------------------------------------------------------------
    INITIALIZE
    ---------------------------------------------------------------- */
-loadBingDailyBackground();
+loadSelectedBackground();
 renderDashboard();

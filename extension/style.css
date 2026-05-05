@@ -44,7 +44,7 @@ body::before {
   transition: opacity 0.8s ease;
 }
 
-body.has-bing-background::before {
+body.has-background-image::before {
   opacity: 1;
 }
 
@@ -99,6 +99,136 @@ header {
   font-weight: 400;
   letter-spacing: 0.5px;
   text-transform: uppercase;
+}
+
+.header-actions {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+}
+
+.background-settings-toggle {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--warm-gray);
+  background: rgba(255, 253, 249, 0.74);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.2s;
+}
+
+.background-settings-toggle:hover,
+.background-settings-toggle[aria-expanded="true"] {
+  background: var(--card-bg);
+  border-color: rgba(200, 113, 58, 0.35);
+  color: var(--accent-amber);
+}
+
+.background-settings-toggle:hover {
+  transform: translateY(-1px);
+}
+
+.background-settings-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.background-settings-panel {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  width: 280px;
+  padding: 12px;
+  border: 1px solid var(--warm-gray);
+  border-radius: 8px;
+  background: rgba(255, 253, 249, 0.97);
+  box-shadow: 0 16px 48px rgba(26, 22, 19, 0.12);
+  z-index: 30;
+  animation: fadeUp 0.18s ease both;
+}
+
+.background-settings-panel[hidden],
+.custom-background-row[hidden] {
+  display: none;
+}
+
+.background-mode-group {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.background-mode-option {
+  min-width: 0;
+  height: 34px;
+  border: 1px solid rgba(154, 145, 138, 0.26);
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+
+.background-mode-option input {
+  width: 12px;
+  height: 12px;
+  accent-color: var(--accent-amber);
+}
+
+.background-mode-option:has(input:checked) {
+  background: rgba(200, 113, 58, 0.08);
+  border-color: rgba(200, 113, 58, 0.42);
+  color: var(--ink);
+}
+
+.custom-background-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.custom-background-row input {
+  min-width: 0;
+  flex: 1;
+  height: 34px;
+  border: 1px solid var(--warm-gray);
+  border-radius: 7px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  padding: 0 10px;
+  outline: none;
+}
+
+.custom-background-row input:focus {
+  border-color: rgba(200, 113, 58, 0.5);
+}
+
+.custom-background-row button {
+  height: 34px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 7px;
+  background: var(--accent-amber);
+  color: white;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.custom-background-row button:hover {
+  opacity: 0.86;
 }
 
 /* ---- Tab cleanup banner ---- */
@@ -939,6 +1069,13 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
   .deferred-column {
     width: 100%;
     position: static;
+  }
+  .dashboard-columns .active-section {
+    min-width: 0;
+    width: 100%;
+  }
+  .background-settings-panel {
+    width: min(280px, calc(100vw - 64px));
   }
 }
 
