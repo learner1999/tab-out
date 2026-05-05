@@ -26,6 +26,74 @@
 // All open tabs — populated by fetchOpenTabs()
 let openTabs = [];
 
+/* ----------------------------------------------------------------
+   BING DAILY BACKGROUND
+
+   Loads Bing's daily image and paints it behind the whole dashboard.
+   The result is cached per local calendar day so a new tab does not
+   hit the network every time it opens.
+   ---------------------------------------------------------------- */
+
+const BING_BACKGROUND_ENDPOINT = 'https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=zh-CN';
+const BING_BACKGROUND_CACHE_KEY = 'bingDailyBackground';
+
+function getLocalDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeBingImageUrl(url) {
+  if (!url) return '';
+  return url.startsWith('http') ? url : `https://www.bing.com${url}`;
+}
+
+function applyBackgroundImage(imageUrl) {
+  if (!imageUrl) return;
+
+  const image = new Image();
+  image.onload = () => {
+    document.documentElement.style.setProperty('--tabout-bg-image', `url("${imageUrl}")`);
+    document.body.classList.add('has-bing-background');
+  };
+  image.src = imageUrl;
+}
+
+async function loadBingDailyBackground() {
+  try {
+    const today = getLocalDateKey();
+    const cached = await chrome.storage.local.get(BING_BACKGROUND_CACHE_KEY);
+    const cachedBackground = cached[BING_BACKGROUND_CACHE_KEY];
+
+    if (cachedBackground?.date === today && cachedBackground?.url) {
+      applyBackgroundImage(cachedBackground.url);
+      return;
+    }
+
+    const response = await fetch(BING_BACKGROUND_ENDPOINT);
+    if (!response.ok) throw new Error(`Bing background request failed: ${response.status}`);
+
+    const data = await response.json();
+    const image = data?.images?.[0];
+    const imageUrl = normalizeBingImageUrl(image?.url);
+    if (!imageUrl) throw new Error('Bing background response did not include an image URL');
+
+    await chrome.storage.local.set({
+      [BING_BACKGROUND_CACHE_KEY]: {
+        date: today,
+        url: imageUrl,
+        title: image.title || '',
+        copyright: image.copyright || '',
+      },
+    });
+
+    applyBackgroundImage(imageUrl);
+  } catch (err) {
+    console.warn('[tab-out] Could not load Bing daily background:', err);
+  }
+}
+
 /**
  * fetchOpenTabs()
  *
@@ -1479,4 +1547,5 @@ document.addEventListener('input', async (e) => {
 /* ----------------------------------------------------------------
    INITIALIZE
    ---------------------------------------------------------------- */
+loadBingDailyBackground();
 renderDashboard();
